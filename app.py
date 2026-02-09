@@ -4,6 +4,10 @@ import datetime
 import pandas as pd
 import numpy as np
 from datetime import datetime as dt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
 
 # ================== FORMATTERS ==================
 def fmt_currency(x):
@@ -220,9 +224,158 @@ if menu == "Check Stock Analysis":
             st.write("Shares Outstanding", fmt_count(info.get("sharesOutstanding")))
             st.write("Employees", fmt_count(info.get("fullTimeEmployees")))
 
-        # ================== CHART ==================
-        st.subheader("Price Chart")
-        st.line_chart(data["Close"])
+        # ================== PRO CANDLE CHART ==================
+        st.subheader("🕯️ Advanced Candlestick Chart")
+
+        # -------- Indicators --------
+        data["MA20"] = data["Close"].rolling(20).mean()
+        data["MA50"] = data["Close"].rolling(50).mean()
+
+        # Bollinger Bands
+        data["STD"] = data["Close"].rolling(20).std()
+        data["Upper"] = data["MA20"] + (2 * data["STD"])
+        data["Lower"] = data["MA20"] - (2 * data["STD"])
+
+        # -------- Subplots (Price + Volume) --------
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.7, 0.3]
+        )
+
+        # -------- Candlestick --------
+        fig.add_trace(
+            go.Candlestick(
+                x=data.index,
+                open=data["Open"],
+                high=data["High"],
+                low=data["Low"],
+                close=data["Close"],
+                name="Price",
+                increasing_line_color="green",
+                decreasing_line_color="red"
+            ),
+            row=1, col=1
+        )
+
+        # -------- Moving Averages --------
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data["MA20"],
+                line=dict(color="yellow", width=1.5),
+                name="MA20"
+            ),
+            row=1, col=1
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data["MA50"],
+                line=dict(color="red", width=1.5),
+                name="MA50"
+            ),
+            row=1, col=1
+        )
+
+        # -------- Bollinger Bands --------
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data["Upper"],
+                line=dict(color="gray", dash="dot"),
+                name="Upper Band"
+            ),
+            row=1, col=1
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=data.index,
+                y=data["Lower"],
+                line=dict(color="gray", dash="dot"),
+                name="Lower Band",
+                fill="tonexty",
+                fillcolor="rgba(128,128,128,0.1)"
+            ),
+            row=1, col=1
+        )
+
+        # -------- Volume (Bottom panel) --------
+        fig.add_trace(
+            go.Bar(
+                x=data.index,
+                y=data["Volume"],
+                name="Volume",
+                marker_color="lightblue"
+            ),
+            row=2, col=1
+        )
+
+        # -------- Layout --------
+        fig.update_layout(
+            template="plotly_dark",
+            height=750,
+            xaxis_rangeslider_visible=False,
+            title="Price Action with Indicators",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02)
+        )
+
+        fig.update_yaxes(title_text="Price (₹)", row=1, col=1)
+        fig.update_yaxes(title_text="Volume", row=2, col=1)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ================== CHART INTERPRETATION ==================
+        st.markdown("---")
+        st.subheader("📚 Indicator Explanation")
+
+        with st.expander("🕯️ Candlestick Chart"):
+            st.write("""
+            - Each candle represents price movement for a time period.
+            - **Green Candle** → Closing price higher than opening (Bullish).
+            - **Red Candle** → Closing price lower than opening (Bearish).
+            - **Upper wick** → Highest traded price.
+            - **Lower wick** → Lowest traded price.
+            """)
+
+        with st.expander("📈 Moving Averages (MA20 & MA50)"):
+            st.write("""
+            - Moving averages smooth price trends.
+            - **MA20 (Yellow Line)** → Short-term trend indicator.
+            - **MA50 (Red Line)** → Long-term trend indicator.
+            - Price above MA → Bullish sentiment.
+            - Price below MA → Bearish sentiment.
+            """)
+
+        with st.expander("📊 Bollinger Bands"):
+            st.write("""
+            Bollinger Bands measure market volatility.
+
+            Components:
+            - **Middle Band** → 20-day moving average.
+            - **Upper Band** → MA + 2 Standard Deviations.
+            - **Lower Band** → MA − 2 Standard Deviations.
+
+            Interpretation:
+            - Bands widening → High volatility.
+            - Bands squeezing → Low volatility (possible breakout).
+            - Price touching upper band → Overbought.
+            - Price touching lower band → Oversold.
+            """)
+
+        with st.expander("📦 Volume"):
+            st.write("""
+            Volume shows number of shares traded.
+
+            Interpretation:
+            - Rising price + high volume → Strong bullish move.
+            - Falling price + high volume → Strong bearish move.
+            - Low volume → Weak trend / low conviction.
+            """)
+
 
         # ================== QUANT ==================
         st.subheader("Quantitative Analysis")
@@ -388,16 +541,172 @@ elif menu == "Compare Two Stocks":
     st.markdown("#### Actual Price Movement (₹)")
     st.line_chart(price_df)
 
+    # ================== CANDLESTICK COMPARISON ==================
+    st.markdown("---")
+    st.subheader("🕯️ Candlestick Comparison")
+
+    import plotly.graph_objects as go
+
+    # Grid layout → 2 charts per row
+    cols = st.columns(2)
+
+    for i, symbol in enumerate(compare_symbols):
+
+        ticker = yf.Ticker(symbol + ".NS")
+        data = ticker.history(period=period)
+
+        if data.empty or len(data) < 5:
+            st.warning(f"Not enough data for {symbol}")
+            continue
+
+        # -------- Indicators --------
+        data["MA20"] = data["Close"].rolling(20).mean()
+        data["MA50"] = data["Close"].rolling(50).mean()
+
+        # -------- Chart --------
+        fig = go.Figure()
+
+        # Candles
+        fig.add_trace(go.Candlestick(
+            x=data.index,
+            open=data["Open"],
+            high=data["High"],
+            low=data["Low"],
+            close=data["Close"],
+            name="Price",
+            increasing_line_color="green",
+            decreasing_line_color="red"
+        ))
+
+        # Moving averages
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data["MA20"],
+            line=dict(color="yellow", width=1),
+            name="MA20"
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data["MA50"],
+            line=dict(color="red", width=1),
+            name="MA50"
+        ))
+
+        fig.update_layout(
+            template="plotly_dark",
+            height=450,
+            margin=dict(l=10, r=10, t=40, b=10),
+            title=f"{symbol} Candlestick",
+            xaxis_rangeslider_visible=False
+        )
+
+        # Place chart in grid
+        with cols[i % 2]:
+            st.plotly_chart(fig, use_container_width=True)
+
+    # ================== CORRELATION HEATMAP ==================
+    st.markdown("---")
+    st.subheader("📊 Stock Correlation Heatmap")
+
+    # Calculate daily returns
+    returns_df = price_df.pct_change().dropna()
+
+    if returns_df.empty:
+        st.warning("Not enough data to compute correlation.")
+    else:
+        corr_matrix = returns_df.corr()
+
+        import plotly.express as px
+
+        fig = px.imshow(
+            corr_matrix,
+            text_auto=True,
+            aspect="auto",
+            color_continuous_scale="RdBu_r",
+            title="Correlation Matrix of Selected Stocks"
+        )
+
+        fig.update_layout(
+            template="plotly_dark",
+    height=600
+)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+
     # -------- Interpretation Help --------
-    st.markdown("### 🧠 How to Read This")
-    st.markdown("""
-    - **Period Return (%)**: Total return over selected duration  
-    - **Annual Volatility**: Risk derived from daily price fluctuations  
-    - **Range Volatility**: High–Low movement normalized by average price  
-    - **Risk Level**: Qualitative interpretation of volatility  
-    - **Normalized Chart**: Relative performance comparison  
-    - **Actual Price Chart**: Absolute price levels  
-    """)
+    # ================== INTERPRETATION ==================
+    st.markdown("---")
+    st.subheader("🧠 How to Read This Dashboard")
+
+    with st.expander("📈 Performance Charts"):
+        st.write("""
+        **Actual Price Chart**
+        - Shows real stock price movement over time.
+        - Useful for identifying absolute price levels.
+
+        **Normalized Performance Chart**
+        - All stocks start at 100.
+        - Enables relative performance comparison.
+        - Helps identify outperformers and underperformers.
+        """)
+
+    with st.expander("🕯️ Candlestick Charts"):
+        st.write("""
+        Each candlestick represents price action for a time period.
+
+        - **Green Candle** → Price closed higher than opened.
+        - **Red Candle** → Price closed lower than opened.
+        - **Upper Wick** → Highest traded price.
+        - **Lower Wick** → Lowest traded price.
+
+        Candlesticks reveal market sentiment and volatility.
+        """)
+
+    with st.expander("📊 Moving Averages"):
+        st.write("""
+        Moving averages smooth price fluctuations.
+
+        - **MA20** → Short-term trend indicator.
+        - **MA50** → Long-term trend indicator.
+
+        Price above MA → Bullish trend.  
+        Price below MA → Bearish trend.
+        """)
+
+    with st.expander("📉 Bollinger Bands"):
+        st.write("""
+        Bollinger Bands measure volatility.
+
+        - Middle Band → 20-day moving average.
+        - Upper Band → MA + 2 standard deviations.
+        - Lower Band → MA − 2 standard deviations.
+
+        Bands widening → High volatility.  
+        Bands squeezing → Low volatility (possible breakout).
+        """)
+
+    with st.expander("📦 Volume"):
+        st.write("""
+        Volume indicates trading activity.
+
+        - High volume + price rise → Strong bullish move.
+        - High volume + price fall → Strong bearish move.
+        - Low volume → Weak conviction.
+        """)
+
+    with st.expander("📊 Correlation Heatmap"):
+        st.write("""
+        Correlation measures how stocks move relative to each other.
+
+        - +1 → Perfect positive correlation.
+        - 0 → No relationship.
+        - −1 → Perfect negative correlation.
+
+        Helps identify diversification opportunities.
+        """)
 
 
 elif menu == "Portfolio Making":
